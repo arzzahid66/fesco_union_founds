@@ -2,15 +2,41 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 import pandas as pd
 import numpy as np
+import os
+import json
+from dotenv import load_dotenv
+load_dotenv()
 
 SPREADSHEET_ID = '14BiC6WpAd0UyWae6Efg1AQTwnCWpDTR9dla7FbhzHB8'
-CREDENTIALS_FILE = 'gmailapisheet.json'
 
 def get_sheets_service():
-    """Get Google Sheets service with better error handling"""
+    """Get Google Sheets service with credentials from environment variables"""
     try:
         scopes = ['https://www.googleapis.com/auth/spreadsheets']
-        creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=scopes)
+        
+        # Option 1: If you store the entire JSON as a string in environment variable
+        credentials_json = os.getenv('GOOGLE_CREDENTIALS_JSON')
+        if credentials_json:
+            # Parse the JSON string
+            credentials_info = json.loads(credentials_json)
+            creds = Credentials.from_service_account_info(credentials_info, scopes=scopes)
+        else:
+            # Option 2: If you store individual components in separate environment variables
+            credentials_info = {
+                "type": "service_account",
+                "project_id": os.getenv('GOOGLE_PROJECT_ID'),
+                "private_key_id": os.getenv('GOOGLE_PRIVATE_KEY_ID'),
+                "private_key": os.getenv('GOOGLE_PRIVATE_KEY').replace('\\n', '\n'),  # Handle newlines
+                "client_email": os.getenv('GOOGLE_CLIENT_EMAIL'),
+                "client_id": os.getenv('GOOGLE_CLIENT_ID'),
+                "auth_uri": os.getenv('GOOGLE_AUTH_URI'),
+                "token_uri": os.getenv('GOOGLE_TOKEN_URI'),
+                "auth_provider_x509_cert_url": os.getenv('GOOGLE_AUTH_PROVIDER_X509_CERT_URL'),
+                "client_x509_cert_url": os.getenv('GOOGLE_CLIENT_X509_CERT_URL'),
+                "universe_domain": os.getenv('GOOGLE_UNIVERSE_DOMAIN')
+            }
+            creds = Credentials.from_service_account_info(credentials_info, scopes=scopes)
+        
         service = build('sheets', 'v4', credentials=creds)
         return service.spreadsheets()
     except Exception as e:
@@ -28,7 +54,6 @@ def check_sheet_exists(sheet_name):
         print(f"Error checking if sheet exists: {str(e)}")
         return False
 
-
 def clean_data_for_sheets(data):
     """Clean data to ensure it's compatible with Google Sheets API"""
     if isinstance(data, pd.DataFrame):
@@ -42,7 +67,7 @@ def clean_data_for_sheets(data):
         for row in data:
             cleaned_row = []
             for cell in row:
-                if pd.isna(cell) or cell is None or cell == 'nan':
+                if pd.isna(cell) or cell is None or cell == 'nan' or str(cell).lower() == 'nan':
                     cleaned_row.append('')
                 else:
                     cleaned_row.append(str(cell))
@@ -140,27 +165,6 @@ def write_sheet_data(sheet_name, data):
     except Exception as e:
         print(f"Error writing sheet data: {str(e)}")
         raise e
-
-def clean_data_for_sheets(data):
-    """Clean data to ensure it's compatible with Google Sheets API"""
-    if isinstance(data, pd.DataFrame):
-        # Replace NaN, None, and inf values with empty strings
-        data = data.replace([np.nan, np.inf, -np.inf], '')
-        # Convert all data to strings to avoid type issues
-        data = data.astype(str)
-        return data.values.tolist()
-    elif isinstance(data, list):
-        cleaned_data = []
-        for row in data:
-            cleaned_row = []
-            for cell in row:
-                if pd.isna(cell) or cell is None or cell == 'nan' or str(cell).lower() == 'nan':
-                    cleaned_row.append('')
-                else:
-                    cleaned_row.append(str(cell))
-            cleaned_data.append(cleaned_row)
-        return cleaned_data
-    return data
 
 def append_sheet_data(sheet_name, data):
     try:
